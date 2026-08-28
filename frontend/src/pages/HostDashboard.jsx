@@ -1,75 +1,18 @@
 import { useEffect, useState } from "react";
 import api from "../services/api.js";
-import { useAuth } from "../context/AuthContext.jsx";
+import DashboardShell, { EmptyState, ErrorState, LoadingState, StatCard, StatusBadge } from "../components/DashboardShell.jsx";
 
 const HostDashboard = () => {
-  const [visitors, setVisitors] = useState([]);
-  const { logout } = useAuth();
-
-  const load = async () => {
-    const { data } = await api.get("/visitors");
-    setVisitors(data);
-  };
-
-  useEffect(() => {
-    load();
-  }, []);
-
-  const decide = async (id, action) => {
-    await api.patch(`/visitors/${id}/${action}`);
-    load();
-  };
-
-  const pending = visitors.filter((v) => v.status === "pending");
-  const others = visitors.filter((v) => v.status !== "pending");
-
-  return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-semibold">Host Dashboard</h1>
-        <button onClick={logout} className="text-sm text-red-600">Logout</button>
-      </div>
-
-      <h2 className="font-semibold mb-2">Pending Approvals ({pending.length})</h2>
-      <div className="space-y-2 mb-8">
-        {pending.map((v) => (
-          <div key={v._id} className="border rounded p-3 flex justify-between items-center">
-            <div>
-              <p className="font-medium">{v.name}</p>
-              <p className="text-xs text-gray-500">{v.purposeOfVisit}</p>
-            </div>
-            <div className="space-x-2">
-              <button onClick={() => decide(v._id, "approve")} className="bg-green-600 text-white text-xs px-3 py-1 rounded">
-                Approve
-              </button>
-              <button onClick={() => decide(v._id, "reject")} className="bg-red-600 text-white text-xs px-3 py-1 rounded">
-                Reject
-              </button>
-            </div>
-          </div>
-        ))}
-        {pending.length === 0 && <p className="text-sm text-gray-500">No pending requests.</p>}
-      </div>
-
-      <h2 className="font-semibold mb-2">History</h2>
-      <table className="w-full text-sm border">
-        <thead className="bg-gray-100">
-          <tr>
-            <th className="p-2 text-left">Name</th>
-            <th className="p-2 text-left">Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {others.map((v) => (
-            <tr key={v._id} className="border-t">
-              <td className="p-2">{v.name}</td>
-              <td className="p-2">{v.status}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
+  const [visitors, setVisitors] = useState([]); const [loading, setLoading] = useState(true); const [error, setError] = useState(""); const [busy, setBusy] = useState("");
+  const load = async () => { try { const { data } = await api.get("/visitors"); setVisitors(data); setError(""); } catch { setError("We could not load your visitor requests."); } finally { setLoading(false); } };
+  useEffect(() => { load(); }, []);
+  const decide = async (id, action) => { setBusy(id); try { await api.patch(`/visitors/${id}/${action}`); await load(); } catch { setError(`We could not ${action} this request. Please try again.`); } finally { setBusy(""); } };
+  const pending = visitors.filter((v) => v.status === "pending"); const history = visitors.filter((v) => v.status !== "pending");
+  return <DashboardShell eyebrow="Host workspace" title="Your visitor requests" description="Review upcoming visits, make decisions quickly, and keep your front desk informed.">
+    {error && <ErrorState message={error} />}
+    {loading ? <LoadingState /> : <><section className="grid gap-4 sm:grid-cols-2"><StatCard label="Needs your review" value={pending.length} detail="Pending approval requests" /><StatCard label="Visit history" value={history.length} detail="Approved, rejected, or completed" /></section>
+      <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="mb-5"><h2 className="font-semibold text-slate-950">Pending approvals</h2><p className="mt-1 text-sm text-slate-500">Confirm that expected visitors can access the building.</p></div>{pending.length === 0 ? <EmptyState title="You are all caught up" description="New visitor requests will appear here." /> : <div className="flex flex-col gap-3">{pending.map((v) => <div key={v._id} className="flex flex-col gap-4 rounded-xl border border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold text-slate-900">{v.name}</p><p className="mt-1 text-sm text-slate-500">{v.purposeOfVisit || "General visit"}</p>{v.phone && <p className="mt-2 text-xs text-slate-400">{v.phone}</p>}</div><div className="flex gap-2"><button disabled={busy === v._id} onClick={() => decide(v._id, "reject")} className="rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50">Reject</button><button disabled={busy === v._id} onClick={() => decide(v._id, "approve")} className="rounded-lg bg-teal-700 px-3 py-2 text-sm font-medium text-white transition hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-50">{busy === v._id ? "Saving..." : "Approve visit"}</button></div></div>)}</div>}</section>
+      <section className="mt-6 rounded-2xl border border-slate-200 bg-white shadow-sm"><div className="border-b border-slate-100 px-5 py-4"><h2 className="font-semibold text-slate-950">Visit history</h2></div>{history.length === 0 ? <div className="p-5"><EmptyState title="No history yet" description="Completed decisions will appear here." /></div> : <div className="overflow-x-auto"><table className="min-w-full text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Visitor</th><th className="px-5 py-3">Status</th></tr></thead><tbody className="divide-y divide-slate-100">{history.map((v) => <tr key={v._id}><td className="px-5 py-4 font-medium">{v.name}</td><td className="px-5 py-4"><StatusBadge status={v.status} /></td></tr>)}</tbody></table></div>}</section></>}
+  </DashboardShell>;
 };
-
 export default HostDashboard;
